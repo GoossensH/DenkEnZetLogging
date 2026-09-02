@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>Denk en Zet — Partijarchief</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#121212;
+    --panel:#1c1c1c;
+    --panel-2:#252525;
+    --line:#383838;
+    --board-light:#e8d3a3;
+    --board-dark:#8a5a34;
+    --ink:#f0ede6;
+    --muted:#9a958c;
+    --accent:#b3272d;
+    --win:#6f8f6a;
+    --loss:#a4453f;
+    --draw:#8a8a82;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;
+  }
+  h1,h2,h3{
+    font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif;
+    font-weight:600;
+    margin:0 0 4px 0;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:20px 18px 60px;}
+  header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px;}
+  header .sub{color:var(--muted);font-size:13px;}
+  nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:22px;}
+  nav button{
+    background:none;border:none;color:var(--muted);
+    font-size:14px;padding:10px 16px;cursor:pointer;
+    border-bottom:2px solid transparent;
+  }
+  nav button.active{color:var(--ink);border-bottom-color:var(--accent);}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:18px;}
+  .muted{color:var(--muted);}
+  label{display:block;font-size:12px;color:var(--muted);margin:14px 0 5px;}
+  input[type=text],input[type=date],textarea,select{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--ink);padding:9px 10px;border-radius:3px;font-size:14px;font-family:inherit;
+  }
+  textarea{font-family:"SFMono-Regular",Consolas,monospace;font-size:13px;min-height:90px;resize:vertical;}
+  .row{display:flex;gap:14px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:160px;}
+  button.primary{
+    background:var(--accent);color:#f7f4ec;border:none;
+    padding:10px 18px;border-radius:3px;font-size:14px;font-weight:600;cursor:pointer;
+  }
+  button.primary:disabled{opacity:.5;cursor:default;}
+  button.ghost{
+    background:none;border:1px solid var(--line);color:var(--ink);
+    padding:9px 16px;border-radius:3px;font-size:14px;cursor:pointer;
+  }
+  button.icon{background:none;border:1px solid var(--line);color:var(--ink);width:38px;height:38px;border-radius:3px;font-size:16px;cursor:pointer;}
+  .drop{
+    border:1px dashed var(--line);border-radius:4px;padding:28px;text-align:center;
+    color:var(--muted);cursor:pointer;
+  }
+  .drop:hover{border-color:var(--accent);color:var(--ink);}
+  .preview{max-width:220px;border-radius:4px;margin:12px auto 0;display:block;border:1px solid var(--line);}
+  .gamelist{list-style:none;margin:0;padding:0;}
+  .gamelist li{
+    border-bottom:1px solid var(--line);padding:12px 4px;cursor:pointer;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+  }
+  .gamelist li:hover{background:var(--panel-2);}
+  .gamelist .players{font-size:14.5px;}
+  .gamelist .meta{font-size:12px;color:var(--muted);}
+  .tag{font-size:11px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;}
+  .tag.win{color:var(--win);border-color:var(--win);}
+  .tag.loss{color:var(--loss);border-color:var(--loss);}
+  .tag.draw{color:var(--draw);border-color:var(--draw);}
+  .replay{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;}
+  .board{
+    display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));
+    width:340px;height:340px;
+    border:2px solid var(--line);flex-shrink:0;
+  }
+  .sq{display:flex;align-items:center;justify-content:center;font-size:26px;position:relative;min-width:0;min-height:0;overflow:hidden;}
+  .sq.light{background:var(--board-light);}
+  .sq.dark{background:var(--board-dark);}
+  .sq.hl::after{content:"";position:absolute;inset:0;background:var(--accent);opacity:.35;}
+  .pw{color:#f5f1e4;text-shadow:0 0 2px #000, 0 0 1px #000;}
+  .pb{color:#241d13;text-shadow:0 0 2px #e9e1c9, 0 0 1px #e9e1c9;}
+  .movepanel{flex:1;min-width:220px;}
+  .movepanel .list{max-height:260px;overflow-y:auto;font-family:"SFMono-Regular",Consolas,monospace;font-size:13.5px;line-height:1.9;border:1px solid var(--line);border-radius:4px;padding:10px;background:var(--panel-2);}
+  .movepanel .list span{padding:1px 4px;border-radius:2px;cursor:pointer;}
+  .movepanel .list span.cur{background:var(--accent);color:#1a1408;}
+  .controls{display:flex;gap:8px;margin-top:12px;align-items:center;}
+  .playerlist{list-style:none;margin:0;padding:0;}
+  .playerlist li{border-bottom:1px solid var(--line);padding:12px 4px;cursor:pointer;display:flex;justify-content:space-between;}
+  .playerlist li:hover{background:var(--panel-2);}
+  .playerlist .stats{font-size:12px;color:var(--muted);}
+  .empty{color:var(--muted);text-align:center;padding:40px 10px;}
+  .backlink{color:var(--accent);background:none;border:none;cursor:pointer;font-size:13px;padding:0 0 14px;}
+  .err{color:var(--loss);font-size:13px;margin-top:8px;}
+  .note{font-size:12px;color:var(--muted);margin-top:16px;}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:40px;padding-top:18px;border-top:1px solid var(--line);line-height:1.7;}
+  .movetable-wrap{max-height:360px;overflow-y:auto;border:1px solid var(--line);border-radius:4px;padding:4px 10px;background:var(--panel-2);margin-top:4px;}
+  table.movetable{width:100%;border-collapse:collapse;font-family:"SFMono-Regular",Consolas,monospace;font-size:13.5px;}
+  table.movetable thead th{position:sticky;top:0;background:var(--panel-2);text-align:left;color:var(--muted);font-weight:500;font-size:11px;padding:6px 6px;border-bottom:1px solid var(--line);}
+  table.movetable td{padding:1px 4px;}
+  table.movetable td.mv-num{color:var(--muted);width:30px;text-align:right;padding-right:8px;font-size:12px;}
+  table.movetable td.mv-num.bad{color:var(--loss);font-weight:600;}
+  table.movetable input{width:100%;background:transparent;border:1px solid transparent;border-radius:3px;padding:5px 6px;color:var(--ink);font-family:inherit;font-size:inherit;}
+  table.movetable input:focus{border-color:var(--accent);background:var(--bg);outline:none;}
+  table.movetable input.bad{border-color:var(--loss);background:rgba(167,92,79,.18);color:var(--loss);}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+/* ---------------- Chess engine (SAN replay, not full legality) ---------------- */
+function startBoard(){
+  const b = Array.from({length:8},()=>Array(8).fill(null));
+  const back = ['R','N','B','Q','K','B','N','R'];
+  for(let f=0;f<8;f++){
+    b[0][f] = {t:back[f], c:'w'};
+    b[1][f] = {t:'P', c:'w'};
+    b[6][f] = {t:'P', c:'b'};
+    b[7][f] = {t:back[f], c:'b'};
+  }
+  return b;
+}
+function cloneBoard(b){ return b.map(r=>r.map(sq=>sq?{...sq}:null)); }
+function sqToRC(sq){ return [parseInt(sq[1])-1, sq.charCodeAt(0)-97]; }
+function pathClear(b,fr,fc,tr,tc){
+  const dr=Math.sign(tr-fr), dc=Math.sign(tc-fc);
+  let r=fr+dr, c=fc+dc;
+  while(r!==tr || c!==tc){
+    if(b[r][c]) return false;
+    r+=dr; c+=dc;
+  }
+  return true;
+}
+function canReach(b,color,type,fr,fc,tr,tc,isCapture){
+  const dr=tr-fr, dc=tc-fc;
+  switch(type){
+    case 'N': return (Math.abs(dr)===2&&Math.abs(dc)===1)||(Math.abs(dr)===1&&Math.abs(dc)===2);
+    case 'K': return Math.abs(dr)<=1&&Math.abs(dc)<=1&&(dr!==0||dc!==0);
+    case 'B': return Math.abs(dr)===Math.abs(dc)&&dr!==0&&pathClear(b,fr,fc,tr,tc);
+    case 'R': return (dr===0)!==(dc===0)&&pathClear(b,fr,fc,tr,tc);
+    case 'Q': return ((dr===0||dc===0||Math.abs(dr)===Math.abs(dc))&&(dr!==0||dc!==0))&&pathClear(b,fr,fc,tr,tc);
+    case 'P': {
+      const dir = color==='w'?1:-1;
+      if(isCapture) return dr===dir && Math.abs(dc)===1;
+      if(dc!==0) return false;
+      if(dr===dir && !b[tr][tc]) return true;
+      const startRank = color==='w'?1:6;
+      if(dr===2*dir && fr===startRank && !b[fr+dir][fc] && !b[tr][tc]) return true;
+      return false;
+    }
+  }
+  return false;
+}
+// Maps piece letters from other notations to the internal English set (K Q R B N).
+// Dutch: K(oning)=K, D(ame)=Q, T(oren)=R, L(oper)=B, P(aard)=N
+const PIECE_LETTER_MAP = {K:'K',Q:'Q',R:'R',B:'B',N:'N', D:'Q',T:'R',L:'B',P:'N'};
+function parseSAN(raw){
+  let s = raw.trim().replace(/[+#!?]+$/,'');
+  if(/^O-O-O$|^0-0-0$/i.test(s)) return {castle:'Q'};
+  if(/^O-O$|^0-0$/i.test(s)) return {castle:'K'};
+  let promotion=null;
+  const pm = s.match(/=([QRBNDTLP])$/);
+  if(pm){ promotion=PIECE_LETTER_MAP[pm[1]]; s=s.slice(0,-2); }
+  let type='P', idx=0;
+  if(/^[KQRBNDTLP]/.test(s)){ type=PIECE_LETTER_MAP[s[0]]; idx=1; }
+  let rest = s.slice(idx);
+  const capture = rest.includes('x');
+  rest = rest.replace('x','');
+  if(rest.length<2) return null;
+  const dest = rest.slice(-2);
+  const disambig = rest.slice(0,-2);
+  let dFile=null, dRank=null;
+  for(const ch of disambig){
+    if(/[a-h]/.test(ch)) dFile=ch;
+    else if(/[1-8]/.test(ch)) dRank=ch;
+  }
+  return {type, dest, dFile, dRank, capture, promotion};
+}
+// Applies one SAN move to board (mutates a clone), returns new board or null on failure
+function applyMove(board, color, san){
+  const b = cloneBoard(board);
+  const m = parseSAN(san);
+  if(!m) return null;
+  if(m.castle){
+    const rank = color==='w'?0:7;
+    if(m.castle==='K'){
+      b[rank][6]=b[rank][4]; b[rank][4]=null;
+      b[rank][5]=b[rank][7]; b[rank][7]=null;
+    } else {
+      b[rank][2]=b[rank][4]; b[rank][4]=null;
+      b[rank][3]=b[rank][0]; b[rank][0]=null;
+    }
+    return {board:b, castle:m.castle, type:'K', from:null, to:null};
+  }
+  const [tr,tc] = sqToRC(m.dest);
+  let candidates=[];
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const p=b[r][c];
+    if(!p||p.c!==color||p.t!==m.type) continue;
+    if(m.dFile && c!==m.dFile.charCodeAt(0)-97) continue;
+    if(m.dRank && r!==parseInt(m.dRank)-1) continue;
+    if(canReach(b,color,m.type,r,c,tr,tc,m.capture)) candidates.push([r,c]);
+  }
+  if(candidates.length===0) return null;
+  const [fr,fc] = candidates[0];
+  // en passant: pawn capture into empty square
+  if(m.type==='P' && m.capture && !b[tr][tc]){
+    const dir = color==='w'?-1:1;
+    b[tr+dir][tc]=null;
+  }
+  const moved = {...b[fr][fc]};
+  if(m.promotion) moved.t = m.promotion;
+  b[tr][tc]=moved;
+  b[fr][fc]=null;
+  return {board:b, castle:null, type:m.type, from:[fr,fc], to:[tr,tc]};
+}
+function buildPositions(moves){
+  // returns array of {board, meta, ok}, index 0 = start (ok:true), index i = after move i
+  let board = startBoard();
+  const positions=[{board, meta:null, ok:true}];
+  for(let i=0;i<moves.length;i++){
+    const color = i%2===0?'w':'b';
+    const prevBoard = positions[positions.length-1].board;
+    const result = applyMove(prevBoard, color, moves[i]);
+    if(result){
+      positions.push({board:result.board, meta:{...result, color}, ok:true});
+    } else {
+      positions.push({board:prevBoard, meta:null, ok:false}); // couldn't be played — hold position
+    }
+  }
+  return positions;
+}
+// Returns the 0-based indices (into the moves array) of moves that could not be played on the board.
+function invalidMoveIndices(moves){
+  const positions = buildPositions(moves);
+  const bad=[];
+  for(let i=1;i<positions.length;i++){ if(!positions[i].ok) bad.push(i-1); }
+  return bad;
+}
+const GLYPH = {
+  w:{K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙'},
+  b:{K:'♚',Q:'♛',R:'♜',B:'♝',N:'♞',P:'♟'}
+};
+
+/* ---------------- PGN parsing ---------------- */
+function parsePGN(text){
+  const headers = {};
+  const headerRe = /\[(\w+)\s+"([^"]*)"\]/g;
+  let hm;
+  while((hm = headerRe.exec(text))){ headers[hm[1].toLowerCase()] = hm[2]; }
+  let body = text.replace(headerRe,'');
+  body = body.replace(/\{[^}]*\}/g,' ');      // comments
+  body = body.replace(/;[^\n]*/g,' ');         // line comments
+  body = body.replace(/\$\d+/g,' ');           // NAGs
+  body = body.replace(/\d+\.(\.\.)?/g,' ');    // move numbers
+  body = body.replace(/(1-0|0-1|1\/2-1\/2|\*)\s*$/,' '); // trailing result
+  const moves = body.trim().split(/\s+/).filter(Boolean);
+  return {
+    white: headers.white || '',
+    black: headers.black || '',
+    date: headers.date && headers.date!=='????.??.??' ? headers.date : '',
+    result: /^(1-0|0-1|1\/2-1\/2)$/.test(headers.result) ? headers.result : '*',
+    moves
+  };
+}
+
+/* ---------------- Storage helpers (Supabase) ---------------- */
+// Fill these in after creating your free Supabase project — see SETUP.md.
+const SUPABASE_URL = 'https://tgxxxibydvlxfwldwbdc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRneHh4aWJ5ZHZseGZ3bGR3YmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDc2ODMsImV4cCI6MjEwMzkyMzY4M30.ijsHg2QEwYzZbUCOqy6DAK4ii6otAdh2Ve2GwC3sNjU';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function rowToGame(row){
+  return { id: row.id, white: row.white, black: row.black, date: row.date, result: row.result, moves: row.moves || [] };
+}
+async function loadGames(){
+  try{
+    const { data, error } = await supabaseClient.from('games').select('*');
+    if(error) throw error;
+    return (data||[]).map(rowToGame);
+  }catch(e){
+    console.error('Kon partijen niet laden:', e);
+    return [];
+  }
+}
+async function upsertGame(game){
+  try{
+    const { error } = await supabaseClient.from('games').upsert({
+      id: game.id, white: game.white, black: game.black, date: game.date, result: game.result, moves: game.moves
+    });
+    if(error) throw error;
+  }catch(e){ console.error('Opslaan mislukt:', e); }
+}
+async function deleteGameRow(id){
+  try{
+    const { error } = await supabaseClient.from('games').delete().eq('id', id);
+    if(error) throw error;
+  }catch(e){ console.error('Verwijderen mislukt:', e); }
+}
+
+/* ---------------- App state ---------------- */
+let state = {
+  tab:'upload',
+  games:[],
+  loaded:false,
+  uploadMode:'photo', // photo | paste
+  uploadImage:null, // {base64, mediaType}
+  extractStatus:'idle', // idle | loading | ready | error
+  extractError:'',
+  draft:null, // {white,black,date,result,movesText}
+  openGameId:null,
+  moveIndex:0,
+  playerFilter:null,
+  editingId:null,
+  pendingDeleteId:null,
+};
+
+function fmtResult(r){
+  if(r==='1-0') return 'Wit wint';
+  if(r==='0-1') return 'Zwart wint';
+  if(r==='1/2-1/2') return 'Remise';
+  return r || 'Uitslag onbekend';
+}
+function resultTagFor(game, playerName){
+  if(!playerName) return null;
+  if(game.result==='1/2-1/2') return 'draw';
+  const whiteWon = game.result==='1-0';
+  const isWhite = game.white.toLowerCase()===playerName.toLowerCase();
+  if(game.result!=='1-0' && game.result!=='0-1') return null;
+  return (isWhite===whiteWon) ? 'win' : 'loss';
+}
+
+async function init(){
+  render();
+  state.games = await loadGames();
+  state.loaded = true;
+  render();
+}
+
+function setTab(t){ state.tab=t; state.openGameId=null; state.playerFilter=null; render(); }
+
+function el(html){
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstChild;
+}
+
+/* ---------------- Render ---------------- */
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  app.appendChild(el(`
+    <header>
+      <div>
+        <div class="muted" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;">Schaakvereniging</div>
+        <h1><span style="color:var(--accent);">♚</span> Denk en Zet</h1>
+        <div class="sub">Partijarchief — alle leden zien dezelfde partijen.</div>
+      </div>
+    </header>
+  `));
+  const nav = el(`
+    <nav>
+      <button data-tab="upload">Partij loggen</button>
+      <button data-tab="games">Partijen</button>
+      <button data-tab="players">Spelers</button>
+    </nav>
+  `);
+  nav.querySelectorAll('button').forEach(btn=>{
+    if(btn.dataset.tab===state.tab) btn.classList.add('active');
+    btn.onclick=()=>setTab(btn.dataset.tab);
+  });
+  app.appendChild(nav);
+
+  const body = document.createElement('div');
+  if(!state.loaded){
+    body.appendChild(el(`<div class="empty">Partijen worden geladen…</div>`));
+  } else if(state.tab==='upload'){
+    body.appendChild(renderUpload());
+  } else if(state.tab==='games'){
+    body.appendChild(state.openGameId ? renderReplay() : renderGamesList());
+  } else if(state.tab==='players'){
+    body.appendChild(state.playerFilter ? renderPlayerDetail() : renderPlayers());
+  }
+  app.appendChild(body);
+  app.appendChild(el(`
+    <footer>
+      Schaakvereniging Denk en Zet · Dorpshuis 'De Boei' · Kerklaan 32, Vinkeveen
+    </footer>
+  `));
+}
+
+/* ---- Upload tab ---- */
+function renderUpload(){
+  const wrap = el(`<div class="card"></div>`);
+
+  if(!state.draft){
+    const modeRow = el(`
+      <div class="controls" style="margin-bottom:16px;">
+        <button class="ghost" id="mode-photo" style="${state.uploadMode!=='paste'?'border-color:var(--accent);color:var(--accent);':''}">Foto</button>
+        <button class="ghost" id="mode-paste" style="${state.uploadMode==='paste'?'border-color:var(--accent);color:var(--accent);':''}">PGN/zetten plakken</button>
+      </div>
+    `);
+    modeRow.querySelector('#mode-photo').onclick = ()=>{ state.uploadMode='photo'; render(); };
+    modeRow.querySelector('#mode-paste').onclick = ()=>{ state.uploadMode='paste'; render(); };
+    wrap.appendChild(modeRow);
+
+    if(state.uploadMode==='paste'){
+      const pasteBox = el(`
+        <div>
+          <div class="muted" style="font-size:13px;margin-bottom:8px;">Plak een volledige PGN (met headers) of gewoon een zettenlijst — Engelse en Nederlandse notatie werken beide.</div>
+          <textarea id="pgn-input" placeholder="1. e4 e5 2. Pf3 Pc6 ... (Nederlands)  of  1. e4 e5 2. Nf3 Nc6 ... (Engels)  of een volledige PGN"></textarea>
+          <div class="controls"><button class="primary" id="pgn-parse">Verwerken</button></div>
+        </div>
+      `);
+      pasteBox.querySelector('#pgn-parse').onclick = ()=>{
+        const text = pasteBox.querySelector('#pgn-input').value;
+        if(!text.trim()) return;
+        const parsed = parsePGN(text);
+        state.draft = {
+          white: parsed.white,
+          black: parsed.black,
+          date: parsed.date,
+          result: parsed.result,
+          movesText: parsed.moves.join(' ')
+        };
+        render();
+      };
+      wrap.appendChild(pasteBox);
+      return wrap;
+    }
+
+    const drop = el(`
+      <div>
+        <div class="drop">📷 Tik om een foto van het scoreformulier te kiezen of te maken</div>
+        <input type="file" accept="image/*" capture="environment" style="display:none">
+      </div>
+    `);
+    const dropDiv = drop.querySelector('.drop');
+    const input = drop.querySelector('input');
+    dropDiv.onclick = ()=>input.click();
+    input.onchange = async (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      const b64 = await fileToBase64(file);
+      state.uploadImage = {base64:b64, mediaType:file.type||'image/jpeg'};
+      state.extractStatus='idle';
+      render();
+      await extractFromImage();
+    };
+    wrap.appendChild(drop);
+    if(state.uploadImage){
+      const img = el(`<img class="preview" src="data:${state.uploadImage.mediaType};base64,${state.uploadImage.base64}">`);
+      wrap.appendChild(img);
+    }
+    if(state.extractStatus==='loading'){
+      wrap.appendChild(el(`<div class="muted" style="margin-top:14px;">Scoreformulier wordt gelezen…</div>`));
+    }
+    if(state.extractStatus==='error'){
+      wrap.appendChild(el(`<div class="err">${state.extractError} Probeer een andere foto, of gebruik "PGN/zetten plakken".</div>`));
+    }
+  } else {
+    wrap.appendChild(renderDraftForm());
+  }
+  return wrap;
+}
+
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// Fill this in after deploying the Cloudflare Worker from vision-proxy-worker.js — see SETUP.md.
+const VISION_PROXY_URL = 'https://vision-proxy-worker.hiddegoossens.workers.dev';
+
+async function extractFromImage(){
+  state.extractStatus='loading';
+  render();
+  try{
+    const response = await fetch(VISION_PROXY_URL, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ image: state.uploadImage.base64, mediaType: state.uploadImage.mediaType })
+    });
+    const data = await response.json();
+    if(data.error) throw new Error(data.error);
+    const parsed = parseScoresheetText(data.text || '');
+    state.draft = {
+      white: parsed.white,
+      black: parsed.black,
+      date: parsed.date,
+      result: parsed.result,
+      movesText: parsed.moves.join(' ')
+    };
+    state.extractStatus='ready';
+  }catch(err){
+    state.extractStatus='error';
+    state.extractError = 'Kon de foto niet goed lezen.';
+  }
+  render();
+}
+
+// Google Vision has no concept of "this is a player name" vs "this is a chess move" — it just
+// returns raw text roughly in reading order. This heuristically pulls out header fields and
+// move-shaped tokens. Expect more manual cleanup than a semantic reader would need; that's why
+// every field lands in the editable review form/table before saving.
+function parseScoresheetText(text){
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  let white='', black='', date='', result='*';
+  const moves=[];
+  const moveTokenRe = /^(O-O-O|0-0-0|O-O|0-0|[KQRBNDTLP]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBNDTLPqrbndtlp])?[+#]?)$/;
+
+  for(const line of lines){
+    const wMatch = line.match(/^(white|wit)\s*[:\-]?\s*(.+)$/i);
+    if(wMatch && !white){ white = wMatch[2].trim(); continue; }
+    const bMatch = line.match(/^(black|zwart)\s*[:\-]?\s*(.+)$/i);
+    if(bMatch && !black){ black = bMatch[2].trim(); continue; }
+    const dMatch = line.match(/^(date|datum)\s*[:\-]?\s*(.+)$/i);
+    if(dMatch && !date){ date = dMatch[2].trim(); continue; }
+
+    for(let raw of line.split(/\s+/)){
+      let tok = raw.replace(/^\(?\d+[.)]+/, '').trim();
+      if(!tok) continue;
+      const asResult = tok.replace(/½/g,'1/2');
+      if(/^(1-0|0-1|1\/2-1\/2)$/.test(asResult)){ result = asResult; continue; }
+      if(moveTokenRe.test(tok)) moves.push(tok);
+    }
+  }
+  return { white, black, date, result, moves };
+}
+
+function renderDraftForm(){
+  const d = state.draft;
+  const isEdit = !!state.editingId;
+  const wrap = el(`<div></div>`);
+  wrap.appendChild(el(`<h3>${isEdit?'Partij bewerken':'Controleer de gegevens'}</h3><div class="muted" style="font-size:13px;">${isEdit?'Pas aan wat nodig is en sla op.':'Verbeter wat de handschriftherkenning fout heeft gelezen en sla op.'}</div>`));
+  const form = el(`
+    <div>
+      <div class="row">
+        <div><label>Wit</label><input type="text" id="f-white" value="${escapeAttr(d.white)}"></div>
+        <div><label>Zwart</label><input type="text" id="f-black" value="${escapeAttr(d.black)}"></div>
+      </div>
+      <div class="row">
+        <div><label>Datum</label><input type="text" id="f-date" placeholder="bijv. 2026-08-30" value="${escapeAttr(d.date)}"></div>
+        <div><label>Uitslag</label>
+          <select id="f-result">
+            <option value="1-0" ${d.result==='1-0'?'selected':''}>Wit wint (1-0)</option>
+            <option value="0-1" ${d.result==='0-1'?'selected':''}>Zwart wint (0-1)</option>
+            <option value="1/2-1/2" ${d.result==='1/2-1/2'?'selected':''}>Remise</option>
+            <option value="*" ${d.result==='*'?'selected':''}>Onduidelijk</option>
+          </select>
+        </div>
+      </div>
+      <label>Zetten</label>
+      <div class="movetable-wrap">
+        <table class="movetable">
+          <thead><tr><th>#</th><th>Wit</th><th>Zwart</th></tr></thead>
+          <tbody id="move-tbody"></tbody>
+        </table>
+      </div>
+      <button class="ghost" id="add-move-row" style="margin-top:8px;padding:6px 12px;font-size:12px;">+ Zet toevoegen</button>
+      <div id="move-warnings"></div>
+      <div class="controls">
+        <button class="primary" id="save-btn">${isEdit?'Wijzigingen opslaan':'Partij opslaan'}</button>
+        <button class="ghost" id="discard-btn">Annuleren</button>
+      </div>
+    </div>
+  `);
+  wrap.appendChild(form);
+
+  const tbody = form.querySelector('#move-tbody');
+  const warnBox = form.querySelector('#move-warnings');
+  const initialMoves = d.movesText.trim() ? d.movesText.trim().split(/\s+/) : [];
+
+  function addRow(whiteVal, blackVal){
+    const rowNum = tbody.children.length+1;
+    const tr = el(`
+      <tr>
+        <td class="mv-num">${rowNum}</td>
+        <td><input type="text" class="mv-white" value="${escapeAttr(whiteVal||'')}"></td>
+        <td><input type="text" class="mv-black" value="${escapeAttr(blackVal||'')}"></td>
+      </tr>
+    `);
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input').forEach(inp=>inp.addEventListener('input', refreshWarnings));
+  }
+  for(let i=0;i<initialMoves.length;i+=2) addRow(initialMoves[i], initialMoves[i+1]);
+  if(initialMoves.length===0) addRow('','');
+
+  function currentMoves(){
+    const arr=[];
+    for(const tr of tbody.children){
+      arr.push(tr.querySelector('.mv-white').value.trim());
+      arr.push(tr.querySelector('.mv-black').value.trim());
+    }
+    while(arr.length && arr[arr.length-1]==='') arr.pop();
+    return arr;
+  }
+  function refreshWarnings(){
+    const moves = currentMoves();
+    const bad = invalidMoveIndices(moves);
+    const badSet = new Set(bad);
+    let i=0;
+    for(const tr of tbody.children){
+      const wIn = tr.querySelector('.mv-white'), bIn = tr.querySelector('.mv-black');
+      const wBad = badSet.has(i), bBad = badSet.has(i+1);
+      wIn.classList.toggle('bad', wBad);
+      bIn.classList.toggle('bad', bBad);
+      tr.querySelector('.mv-num').classList.toggle('bad', wBad||bBad);
+      i+=2;
+    }
+    warnBox.innerHTML='';
+    if(bad.length){
+      const list = bad.map(idx=>describeMoveIndex(moves,idx)).join(', ');
+      warnBox.appendChild(el(`<div class="err" style="margin-top:8px;">⚠ ${bad.length} zet${bad.length>1?'ten':''} kan/kunnen niet echt op het bord gespeeld worden, hierboven gemarkeerd: ${escapeHtml(list)}. Dit komt meestal door een typfout, verkeerd veld of verkeerde stukletter — verbeter het in de tabel, of sla toch op en herstel het later.</div>`));
+    }
+  }
+  form.querySelector('#add-move-row').onclick = ()=>{ addRow('',''); refreshWarnings(); };
+  refreshWarnings();
+
+  form.querySelector('#save-btn').onclick = async ()=>{
+    const gameData = {
+      white: form.querySelector('#f-white').value.trim() || 'Wit',
+      black: form.querySelector('#f-black').value.trim() || 'Zwart',
+      date: form.querySelector('#f-date').value.trim(),
+      result: form.querySelector('#f-result').value,
+      moves: currentMoves()
+    };
+    let savedGame;
+    if(state.editingId){
+      const i = state.games.findIndex(g=>g.id===state.editingId);
+      savedGame = {...(i>-1?state.games[i]:{id:state.editingId}), ...gameData};
+      if(i>-1) state.games[i] = savedGame;
+    } else {
+      savedGame = {id:'g'+Date.now()+Math.random().toString(36).slice(2,7), ...gameData};
+      state.games.push(savedGame);
+    }
+    await upsertGame(savedGame);
+    const wasEditing = state.editingId;
+    state.draft=null;
+    state.uploadImage=null;
+    state.extractStatus='idle';
+    state.editingId=null;
+    if(wasEditing){ state.tab='games'; state.openGameId=wasEditing; }
+    else { state.tab='games'; }
+    render();
+  };
+  form.querySelector('#discard-btn').onclick = ()=>{
+    const wasEditing = state.editingId;
+    state.draft=null; state.uploadImage=null; state.extractStatus='idle'; state.editingId=null;
+    if(wasEditing){ state.tab='games'; state.openGameId=wasEditing; }
+    render();
+  };
+  return wrap;
+}
+
+async function deleteGame(id){
+  state.games = state.games.filter(g=>g.id!==id);
+  await deleteGameRow(id);
+  if(state.openGameId===id) state.openGameId=null;
+  state.pendingDeleteId=null;
+  render();
+}
+
+/* ---- Games tab ---- */
+function renderGamesList(){
+  const wrap = el(`<div class="card"></div>`);
+  if(state.games.length===0){
+    wrap.appendChild(el(`<div class="empty">Nog geen partijen gelogd. Ga naar "Partij loggen" om de eerste toe te voegen.</div>`));
+    return wrap;
+  }
+  const sorted = [...state.games].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  const list = el(`<ul class="gamelist"></ul>`);
+  sorted.forEach(g=>{
+    const confirming = state.pendingDeleteId===g.id;
+    const badCount = invalidMoveIndices(g.moves).length;
+    const li = el(`
+      <li>
+        <div>
+          <div class="players">${escapeHtml(g.white)} vs ${escapeHtml(g.black)}</div>
+          <div class="meta">${escapeHtml(g.date||'geen datum')} · ${g.moves.length} halve zetten</div>
+        </div>
+        <div class="controls" style="margin-top:0;">
+          ${confirming ? '' : `${badCount>0?`<span class="tag" style="color:var(--loss);border-color:var(--loss);">⚠ ${badCount} onduidelijk</span>`:''}<span class="tag">${fmtResult(g.result)}</span>`}
+          ${confirming
+            ? `<button class="ghost" data-act="cancel">Annuleren</button><button class="ghost" data-act="confirm" style="border-color:var(--loss);color:var(--loss);">Verwijderen</button>`
+            : `<button class="ghost" data-act="del" style="padding:6px 10px;">🗑</button>`}
+        </div>
+      </li>
+    `);
+    const openRow = ()=>{ state.openGameId=g.id; state.moveIndex=g.moves.length; render(); };
+    li.onclick = (e)=>{ if(e.target.closest('button')) return; openRow(); };
+    const delBtn = li.querySelector('[data-act="del"]');
+    if(delBtn) delBtn.onclick = (e)=>{ e.stopPropagation(); state.pendingDeleteId=g.id; render(); };
+    const cancelBtn = li.querySelector('[data-act="cancel"]');
+    if(cancelBtn) cancelBtn.onclick = (e)=>{ e.stopPropagation(); state.pendingDeleteId=null; render(); };
+    const confirmBtn = li.querySelector('[data-act="confirm"]');
+    if(confirmBtn) confirmBtn.onclick = (e)=>{ e.stopPropagation(); deleteGame(g.id); };
+    list.appendChild(li);
+  });
+  wrap.appendChild(list);
+  return wrap;
+}
+
+/* ---- Replay ---- */
+function renderReplay(){
+  const game = state.games.find(g=>g.id===state.openGameId);
+  const wrap = el(`<div></div>`);
+  const back = el(`<button class="backlink">← Terug naar partijen</button>`);
+  back.onclick = ()=>{ state.openGameId=null; render(); };
+  wrap.appendChild(back);
+
+  if(!game){ wrap.appendChild(el(`<div class="empty">Partij niet gevonden.</div>`)); return wrap; }
+
+  const card = el(`<div class="card"></div>`);
+  const headRow = el(`
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+      <div>
+        <h3>${escapeHtml(game.white)} vs ${escapeHtml(game.black)}</h3>
+        <div class="muted" style="font-size:13px;margin-bottom:14px;">${escapeHtml(game.date||'geen datum')} · ${fmtResult(game.result)}</div>
+      </div>
+      <div class="controls" style="margin-top:0;">
+        ${state.pendingDeleteId===game.id
+          ? `<button class="ghost" id="del-cancel">Annuleren</button><button class="ghost" id="del-confirm" style="border-color:var(--loss);color:var(--loss);">Verwijderen bevestigen</button>`
+          : `<button class="ghost" id="edit-btn">Bewerken</button><button class="ghost" id="del-btn">Verwijderen</button>`}
+      </div>
+    </div>
+  `);
+  card.appendChild(headRow);
+  const editBtn = headRow.querySelector('#edit-btn');
+  if(editBtn) editBtn.onclick = ()=>{
+    state.draft = {white:game.white, black:game.black, date:game.date, result:game.result, moves: undefined, movesText: game.moves.join(' ')};
+    state.editingId = game.id;
+    state.tab='upload';
+    render();
+  };
+  const delBtn = headRow.querySelector('#del-btn');
+  if(delBtn) delBtn.onclick = ()=>{ state.pendingDeleteId=game.id; render(); };
+  const delCancel = headRow.querySelector('#del-cancel');
+  if(delCancel) delCancel.onclick = ()=>{ state.pendingDeleteId=null; render(); };
+  const delConfirm = headRow.querySelector('#del-confirm');
+  if(delConfirm) delConfirm.onclick = ()=>{ deleteGame(game.id); };
+
+  const positions = buildPositions(game.moves);
+  const idx = Math.min(state.moveIndex, game.moves.length);
+  const entry = positions[idx];
+  const board = entry.board;
+  const badIndices = new Set();
+  for(let i=1;i<positions.length;i++){ if(!positions[i].ok) badIndices.add(i-1); }
+
+  if(badIndices.size>0){
+    const list = [...badIndices].map(i=>describeMoveIndex(game.moves,i)).join(', ');
+    const warn = el(`<div class="err" style="margin-bottom:14px;">⚠ ${badIndices.size} zet${badIndices.size>1?'ten':''} in deze partij kon/konden niet op het bord gespeeld worden (hieronder doorgestreept) en is/zijn overgeslagen, dus de stelling klopt mogelijk niet meer vanaf dat punt: ${escapeHtml(list)}. <button class="ghost" id="fix-btn" style="margin-left:6px;padding:4px 10px;font-size:12px;">Oplossen</button></div>`);
+    card.appendChild(warn);
+    warn.querySelector('#fix-btn').onclick = ()=>{
+      state.draft = {white:game.white, black:game.black, date:game.date, result:game.result, movesText: game.moves.join(' ')};
+      state.editingId = game.id;
+      state.tab='upload';
+      render();
+    };
+  }
+
+  const replayRow = el(`<div class="replay"></div>`);
+
+  const boardEl = el(`<div class="board"></div>`);
+  for(let r=7;r>=0;r--){
+    for(let c=0;c<8;c++){
+      const light = (r+c)%2===1;
+      const p = board[r][c];
+      const sq = el(`<div class="sq ${light?'light':'dark'}"></div>`);
+      if(p){
+        const g = document.createElement('span');
+        g.textContent = GLYPH[p.c][p.t];
+        g.className = p.c==='w'?'pw':'pb';
+        sq.appendChild(g);
+      }
+      boardEl.appendChild(sq);
+    }
+  }
+  replayRow.appendChild(boardEl);
+
+  const panel = el(`<div class="movepanel"></div>`);
+  const listEl = el(`<div class="list"></div>`);
+  game.moves.forEach((mv,i)=>{
+    if(i%2===0){
+      const num = document.createElement('span');
+      num.style.color='var(--muted)';
+      num.style.cursor='default';
+      num.textContent = (i/2+1)+'. ';
+      listEl.appendChild(num);
+    }
+    const span = document.createElement('span');
+    span.textContent = mv + ' ';
+    if(i+1===idx) span.classList.add('cur');
+    if(badIndices.has(i)){
+      span.style.color = 'var(--loss)';
+      span.style.textDecoration = 'line-through';
+      span.title = "Kon niet op het bord gespeeld worden — waarschijnlijk verkeerd gelezen. Klik op Bewerken om dit te herstellen.";
+    }
+    span.onclick = ()=>{ state.moveIndex=i+1; render(); };
+    listEl.appendChild(span);
+  });
+  panel.appendChild(listEl);
+
+  const controls = el(`
+    <div class="controls">
+      <button class="icon" id="c-start">⏮</button>
+      <button class="icon" id="c-prev">◀</button>
+      <button class="icon" id="c-next">▶</button>
+      <button class="icon" id="c-end">⏭</button>
+      <span class="muted" style="font-size:12px;">${idx} / ${game.moves.length}</span>
+    </div>
+  `);
+  panel.appendChild(controls);
+  const kbdHint = el(`<div class="muted" style="font-size:11.5px;margin-top:6px;">Tip: gebruik ← → om door de zetten te lopen, Home/End voor begin/einde.</div>`);
+  panel.appendChild(kbdHint);
+  replayRow.appendChild(panel);
+  card.appendChild(replayRow);
+
+  wrap.appendChild(card);
+
+  controls.querySelector('#c-start').onclick=()=>{ state.moveIndex=0; render(); };
+  controls.querySelector('#c-prev').onclick=()=>{ state.moveIndex=Math.max(0,idx-1); render(); };
+  controls.querySelector('#c-next').onclick=()=>{ state.moveIndex=Math.min(game.moves.length,idx+1); render(); };
+  controls.querySelector('#c-end').onclick=()=>{ state.moveIndex=game.moves.length; render(); };
+
+  return wrap;
+}
+
+/* ---- Players ---- */
+function computeStats(){
+  const stats = {};
+  state.games.forEach(g=>{
+    [g.white, g.black].forEach(name=>{
+      if(!name) return;
+      if(!stats[name]) stats[name]={name, games:0, wins:0, losses:0, draws:0};
+    });
+    if(g.white) stats[g.white].games++;
+    if(g.black) stats[g.black].games++;
+    const wt = resultTagFor(g,g.white), bt = resultTagFor(g,g.black);
+    if(g.white && wt==='win') stats[g.white].wins++;
+    if(g.white && wt==='loss') stats[g.white].losses++;
+    if(g.white && wt==='draw') stats[g.white].draws++;
+    if(g.black && bt==='win') stats[g.black].wins++;
+    if(g.black && bt==='loss') stats[g.black].losses++;
+    if(g.black && bt==='draw') stats[g.black].draws++;
+  });
+  return Object.values(stats).sort((a,b)=>b.games-a.games);
+}
+function renderPlayers(){
+  const wrap = el(`<div class="card"></div>`);
+  const stats = computeStats();
+  if(stats.length===0){
+    wrap.appendChild(el(`<div class="empty">Nog geen spelers — log eerst een partij.</div>`));
+    return wrap;
+  }
+  const list = el(`<ul class="playerlist"></ul>`);
+  stats.forEach(p=>{
+    const li = el(`
+      <li>
+        <span>${escapeHtml(p.name)}</span>
+        <span class="stats">${p.games} partijen · ${p.wins}W ${p.losses}V ${p.draws}R</span>
+      </li>
+    `);
+    li.onclick = ()=>{ state.playerFilter=p.name; render(); };
+    list.appendChild(li);
+  });
+  wrap.appendChild(list);
+  return wrap;
+}
+function renderPlayerDetail(){
+  const wrap = el(`<div></div>`);
+  const back = el(`<button class="backlink">← Terug naar spelers</button>`);
+  back.onclick = ()=>{ state.playerFilter=null; render(); };
+  wrap.appendChild(back);
+
+  const name = state.playerFilter;
+  const games = state.games.filter(g=>g.white===name || g.black===name)
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const card = el(`<div class="card"></div>`);
+  card.appendChild(el(`<h3>${escapeHtml(name)}</h3><div class="muted" style="font-size:13px;margin-bottom:14px;">${games.length} partijen gelogd</div>`));
+  const list = el(`<ul class="gamelist"></ul>`);
+  games.forEach(g=>{
+    const opp = g.white===name ? g.black : g.white;
+    const tag = resultTagFor(g,name);
+    const li = el(`
+      <li>
+        <div>
+          <div class="players">tegen ${escapeHtml(opp)}</div>
+          <div class="meta">${escapeHtml(g.date||'geen datum')} · speelde met ${g.white===name?'Wit':'Zwart'}</div>
+        </div>
+        <span class="tag ${tag||''}">${tag ? (tag==='win'?'Gewonnen':tag==='loss'?'Verloren':'Remise') : fmtResult(g.result)}</span>
+      </li>
+    `);
+    li.onclick = ()=>{ state.tab='games'; state.openGameId=g.id; state.moveIndex=g.moves.length; render(); };
+    list.appendChild(li);
+  });
+  card.appendChild(list);
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function describeMoveIndex(moves, i){
+  const moveNum = Math.floor(i/2)+1;
+  const side = i%2===0 ? 'Wit' : 'Zwart';
+  return `zet ${moveNum} van ${side} ("${moves[i]||''}")`;
+}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s){ return escapeHtml(s); }
+
+document.addEventListener('keydown', (e)=>{
+  if(state.tab!=='games' || !state.openGameId) return;
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if(tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT') return; // don't hijack typing elsewhere
+  const game = state.games.find(g=>g.id===state.openGameId);
+  if(!game) return;
+  const idx = Math.min(state.moveIndex, game.moves.length);
+  if(e.key==='ArrowLeft'){ state.moveIndex = Math.max(0, idx-1); render(); e.preventDefault(); }
+  else if(e.key==='ArrowRight'){ state.moveIndex = Math.min(game.moves.length, idx+1); render(); e.preventDefault(); }
+  else if(e.key==='Home'){ state.moveIndex = 0; render(); e.preventDefault(); }
+  else if(e.key==='End'){ state.moveIndex = game.moves.length; render(); e.preventDefault(); }
+});
+
+init();
+</script>
+</body>
+</html>
